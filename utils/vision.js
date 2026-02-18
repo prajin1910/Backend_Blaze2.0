@@ -1,11 +1,29 @@
 const vision = require('@google-cloud/vision');
 const path = require('path');
+const fs = require('fs');
 const OpenAI = require('openai');
 
-// Initialize Vision client with service account
-const client = new vision.ImageAnnotatorClient({
-  keyFilename: path.join(__dirname, '..', 'config', 'vision-key.json')
-});
+// Initialize Vision client — prefer env var, fallback to key file
+let visionClientOptions = {};
+if (process.env.GOOGLE_CREDENTIALS) {
+  try {
+    const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    visionClientOptions = { credentials: creds };
+    console.log('[Vision] Using GOOGLE_CREDENTIALS from environment');
+  } catch (e) {
+    console.warn('[Vision] Failed to parse GOOGLE_CREDENTIALS env var:', e.message);
+  }
+}
+if (!visionClientOptions.credentials) {
+  const keyPath = path.join(__dirname, '..', 'config', 'vision-key.json');
+  if (fs.existsSync(keyPath)) {
+    visionClientOptions = { keyFilename: keyPath };
+    console.log('[Vision] Using key file:', keyPath);
+  } else {
+    console.warn('[Vision] No credentials found — Vision API calls will use fallback');
+  }
+}
+const client = new vision.ImageAnnotatorClient(visionClientOptions);
 
 // Initialize OpenRouter client for vision fallback
 const openrouter = new OpenAI({
