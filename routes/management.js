@@ -32,14 +32,23 @@ router.post('/providers', auth(['management']), async (req, res) => {
     await provider.save();
 
     // Send credentials via email
+    let emailSent = false;
+    let emailError = null;
     try {
       await sendProviderCredentials(email, name, password, department);
+      emailSent = true;
+      console.log(`[Management] Provider credentials email sent to ${email}`);
     } catch (emailErr) {
-      console.error('Failed to send credentials email:', emailErr);
+      emailError = emailErr.message;
+      console.error(`[Management] Failed to send credentials email to ${email}:`, emailErr.message);
     }
 
     res.status(201).json({
-      message: 'Service provider created successfully',
+      message: emailSent
+        ? 'Service provider created successfully. Login credentials sent to their email.'
+        : 'Service provider created successfully, but failed to send credentials email. Please share the credentials manually.',
+      emailSent,
+      emailError: emailError || undefined,
       provider: { id: provider._id, name, email, department }
     });
   } catch (error) {

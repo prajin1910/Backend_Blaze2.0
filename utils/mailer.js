@@ -1,12 +1,41 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+// Create transporter with error handling
+let transporter;
+try {
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  // Verify connection on startup
+  transporter.verify()
+    .then(() => console.log('[Mailer] Email service connected successfully'))
+    .catch(err => console.error('[Mailer] Email service connection FAILED:', err.message));
+} catch (err) {
+  console.error('[Mailer] Failed to create transporter:', err.message);
+}
+
+// Helper to safely send mail with logging
+async function safeSendMail(mailOptions, context) {
+  if (!transporter) {
+    console.error(`[Mailer] Cannot send ${context}: transporter not initialized`);
+    throw new Error('Email transporter not configured');
   }
-});
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error(`[Mailer] Cannot send ${context}: EMAIL_USER or EMAIL_PASS not set`);
+    throw new Error('Email credentials not configured');
+  }
+  console.log(`[Mailer] Sending ${context} to ${mailOptions.to}...`);
+  const result = await transporter.sendMail(mailOptions);
+  console.log(`[Mailer] ${context} sent successfully to ${mailOptions.to}, messageId: ${result.messageId}`);
+  return result;
+}
+
+const PORTAL_URL = process.env.FRONTEND_URL || 'https://frontend-blaze2-0.onrender.com';
 
 const sendOTP = async (email, otp) => {
   const mailOptions = {
@@ -28,7 +57,7 @@ const sendOTP = async (email, otp) => {
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await safeSendMail(mailOptions, 'OTP');
 };
 
 const sendProviderCredentials = async (email, name, password, department) => {
@@ -43,18 +72,23 @@ const sendProviderCredentials = async (email, name, password, department) => {
         <p style="font-size: 16px; color: #333;">Hello <strong>${name}</strong>,</p>
         <p>Your Service Provider account has been created for the <strong>${department}</strong> department.</p>
         <div style="background: #e8eaf6; padding: 15px; border-radius: 8px; margin: 15px 0;">
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Password:</strong> ${password}</p>
-          <p><strong>Department:</strong> ${department}</p>
+          <p style="margin: 8px 0;"><strong>Login Email:</strong> ${email}</p>
+          <p style="margin: 8px 0;"><strong>Password:</strong> <code style="background: #fff; padding: 2px 8px; border-radius: 4px; font-size: 16px; color: #c62828;">${password}</code></p>
+          <p style="margin: 8px 0;"><strong>Role:</strong> Service Provider</p>
+          <p style="margin: 8px 0;"><strong>Department:</strong> ${department}</p>
         </div>
-        <p style="font-size: 14px; color: #666;">Please log in at the TNSMP portal to start resolving complaints.</p>
+        <div style="text-align: center; margin: 20px 0;">
+          <a href="${PORTAL_URL}/login" style="display: inline-block; background: #1a237e; color: #fff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;">Login to Portal</a>
+        </div>
+        <p style="font-size: 14px; color: #666;">Please log in using the credentials above and change your password after first login.</p>
+        <p style="font-size: 14px; color: #e65100;"><strong>Important:</strong> Keep your credentials secure and do not share them with anyone.</p>
         <hr style="border: 1px solid #e0e0e0;">
         <p style="font-size: 12px; color: #999; text-align: center;">© 2026 TNSMP - Government of Tamil Nadu</p>
       </div>
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await safeSendMail(mailOptions, 'Provider Credentials');
 };
 
 // Notify provider of new complaint assignment
@@ -77,6 +111,9 @@ const sendComplaintAssignment = async (providerEmail, providerName, complaint) =
           <p><strong>Description:</strong> ${complaint.description.substring(0, 200)}${complaint.description.length > 200 ? '...' : ''}</p>
           ${complaint.address ? `<p><strong>Location:</strong> ${complaint.address}</p>` : ''}
         </div>
+        <div style="text-align: center; margin: 20px 0;">
+          <a href="${PORTAL_URL}/login" style="display: inline-block; background: #1a237e; color: #fff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: bold;">View in Portal</a>
+        </div>
         <p style="font-size: 14px; color: #666;">Please log in to the TNSMP portal to accept and resolve this complaint.</p>
         <hr style="border: 1px solid #e0e0e0;">
         <p style="font-size: 12px; color: #999; text-align: center;">© 2026 TNSMP - Government of Tamil Nadu</p>
@@ -84,7 +121,7 @@ const sendComplaintAssignment = async (providerEmail, providerName, complaint) =
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await safeSendMail(mailOptions, 'Complaint Assignment');
 };
 
 // Notify user about complaint status update
@@ -113,6 +150,9 @@ const sendStatusUpdate = async (userEmail, userName, complaint, newStatus, note)
           ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
           ${complaint.assignedToName ? `<p><strong>Handled by:</strong> ${complaint.assignedToName}</p>` : ''}
         </div>
+        <div style="text-align: center; margin: 20px 0;">
+          <a href="${PORTAL_URL}/login" style="display: inline-block; background: #1a237e; color: #fff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: bold;">Check Status</a>
+        </div>
         <p style="font-size: 14px; color: #666;">Log in to the TNSMP portal to view full details.</p>
         <hr style="border: 1px solid #e0e0e0;">
         <p style="font-size: 12px; color: #999; text-align: center;">© 2026 TNSMP - Government of Tamil Nadu</p>
@@ -120,7 +160,7 @@ const sendStatusUpdate = async (userEmail, userName, complaint, newStatus, note)
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await safeSendMail(mailOptions, 'Status Update');
 };
 
 module.exports = { sendOTP, sendProviderCredentials, sendComplaintAssignment, sendStatusUpdate };
